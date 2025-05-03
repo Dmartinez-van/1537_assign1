@@ -20,16 +20,36 @@ require("dotenv").config();
 const PORT = process.env.PORT || 3001;
 const app = express();
 
+/* secret information section */
+const mongodb_host = process.env.MONGODB_HOST;
+const mongodb_user = process.env.MONGODB_USER;
+const mongodb_password = process.env.MONGODB_PASSWORD;
+const mongodb_database = process.env.MONGODB_DATABASE;
+const mongodb_session_secret = process.env.MONGODB_SESSION_SECRET;
+
+const { database } = require("./databaseConnection.js");
+const userCollection = database.db(mongodb_database).collection("users");
+
+var mongoStore = MongoStore.create({
+  mongoUrl: `mongodb+srv://${mongodb_user}:${mongodb_password}@${mongodb_host}/sessions`,
+  crypto: {
+    secret: mongodb_session_secret,
+  },
+});
+
+app.use(express.urlencoded({ extended: false }));
+const expireTime = 3600000;
 app.use(
   session({
-    secret: "Kitty doggo",
-    resave: false,
-    saveUninitialized: true,
-    cookie: { secure: true, maxAge: 3600000 },
+    secret: process.env.NODE_SESSION_SECRET,
+    store: mongoStore,
+    resave: true,
+    saveUninitialized: false,
+    cookie: { secure: true, maxAge: expireTime },
   })
 );
 
-app.use("/static", express.static(path.join(__dirname, "public")));
+app.use(express.static(path.join(__dirname, "/public")));
 
 app.get("/", (req, res) => {
   // if user not logged in, Display two buttons: login and singup
@@ -60,9 +80,9 @@ app.get("/signup", (req, res) => {
   res.send(`
             <div>Create User</div>
             <form action="/createUser" method="POST">
-                <input type="text" placeholder="name" />
-                <input type="text" placeholder="email" />
-                <input type="password" placeholder="password" id="password" />
+                <input name="username" type="text" placeholder="name">
+                <input name="email" type="text" placeholder="email">
+                <input name="password" type="password" placeholder="password" id="password">
                 <button type="submit">Submit</button>
             </form>
             <button id="toggleShowPass" onclick="showPass()">show password</button>
@@ -79,12 +99,36 @@ app.get("/signup", (req, res) => {
         `);
 });
 
+app.post("/createUser", async (req, res) => {
+  const username = req.body.username;
+  const email = req.body.email;
+  const password = req.body.password;
+
+  const schema = Joi.object({
+    username: Joi.string().alphanum().max(20).required(),
+    password: Joi.string().max(20).required(),
+    email: Joi.string().email().required(),
+  });
+
+  const valid = schema.validate({ username, password, email });
+  // Use != to loosly check for null and undefined
+  if (valid.error != null) {
+    res.redirect("/signup");
+    return;
+  }
+
+  const hashedPass = await bcrypt.hash(password, saltRounds);
+  await userCollection.insertOne({ username, email, password: hashedPass });
+
+  res.send("New user signup completed successfully");
+});
+
 app.get("/login", (req, res) => {
   res.send(`
             <h3>Login</h3>
             <form action="/login" method="POST">
-                <input type="text" placeholder="email" />
-                <input type="password" placeholder="password" id="password" />
+                <input name="email" type="text" placeholder="email">
+                <input name="password" type="password" placeholder="password" id="password">
                 <button>Login</button>
             </form>
             <script>
@@ -100,17 +144,62 @@ app.get("/login", (req, res) => {
         `);
 });
 
-app.post("/login", (req, res) => {
-  res.redirect("/members");
+app.post("/login", async (req, res) => {
+  const email = req.body.email;
+  const password = req.body.password;
+
+  const schema = Joi.string().email().required();
+  const valid = schema.validate(email);
+  if (valid != null) {
+    console.log(valid.error);
+    return res.redirect("/login");
+  }
+
+  const foundUser = await userCollection
+    .find({ email })
+    .project({ email: 1, username: 1, password: 1, _id: 1 })
+    .toArray();
+
+  console.log({ foundUser });
+  if (foundUser.length >= 1) {
+    console.log("user not found");
+    return res.redirect("/login");
+  }
+
+  if (await bcrypt.compare(password, foundUser[0].password)) {
+    console.log("correct password");
+    req.session.auth = true;
+    req.session.username = username;
+    req.session.cookie.maxAge = expireTime;
+
+    return res.redirect("/members");
+  } else {
+    console.log("incorrect password");
+    return res.redirect("/login");
+  }
 });
 
 app.get("/members", (req, res) => {
+  // Math.random() generates random num from 0 to 1 (1 not inclusive)
+  // Multiply result by 3 to get some value up to 3. Then add 1 to be inclusive of 3.
+  const randomNum = Math.floor(Math.random() * 3) + 1;
+  console.log("random number is : ", randomNum);
+  let imgSrc;
+  if (randomNum === 1) {
+    imgSrc = "/images/eq1.jpeg";
+  } else if (randomNum === 2) {
+    imgSrc = "/images/eq2.png";
+  } else {
+    imgSrc = "/images/eq3.jpeg";
+  }
   res.send(`
             <h3>Welcome to members area, ${
-              req.session.user.username || "User"
+              req.session?.username || "User"
             }!</h3>
-            <img src= />
+            <img src="${imgSrc}" alt="anImage" style="width:1050px"/>
         `);
 });
 
-app.listen(PORT);
+app.listen(PORT, () => {
+  console.log(`Listening on ${PORT}...`);
+});
