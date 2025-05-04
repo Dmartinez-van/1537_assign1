@@ -244,6 +244,7 @@ app.get("/members", (req, res) => {
 });
 
 app.post("/logout", (req, res) => {
+  res.clearCookie("connect.sid");
   req.session.destroy();
   return res.send(`
             <h3>You are logged out</h3>
