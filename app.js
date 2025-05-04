@@ -65,7 +65,7 @@ app.get("/", (req, res) => {
   } else {
     res.send(`
             <h1>Hello, ${req.session?.username || "User"}!
-            <form action="/membersOnly" method="GET">
+            <form action="/members" method="GET">
                 <button type="submit">Go to Members Area</button>
             </form>
             <form action="/logout" method="POST">
