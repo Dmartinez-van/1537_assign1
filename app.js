@@ -8,7 +8,7 @@ const saltRounds = 12;
 
 // converts jpegs to png (got the suggestion from chatgpt).
 // Also could've looked into ffmpeg instead, but I wanna try this.
-const sharp = require("sharp");
+// const sharp = require("sharp");
 // sample code:
 // sharp('input.jpg')
 //   .png()
