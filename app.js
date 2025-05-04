@@ -131,6 +131,10 @@ app.post("/createUser", async (req, res) => {
     password: hashedPass,
   });
 
+  req.session.auth = true;
+  req.session.username = name;
+  req.session.cookie.maxAge = expireTime;
+
   res.redirect("/members");
 });
 
@@ -198,7 +202,6 @@ app.post("/login", async (req, res) => {
     return res.redirect("/members");
   } else {
     console.log("incorrect password");
-    console.log(valid);
     return res.send(`
         <p>Invalid email/password combination</p>
         <form action="/login" method="GET">
