@@ -45,7 +45,6 @@ app.use(
     store: mongoStore,
     resave: true,
     saveUninitialized: false,
-    cookie: { secure: true, maxAge: expireTime },
   })
 );
 
@@ -53,7 +52,7 @@ app.use(express.static(path.join(__dirname, "/public")));
 
 app.get("/", (req, res) => {
   // if user not logged in, Display two buttons: login and singup
-  if (!req.session.user) {
+  if (!req.session.auth) {
     res.send(`
             <h1>Currently not logged in, no session</h1>
             <form action="/signup" method="GET">
@@ -65,7 +64,7 @@ app.get("/", (req, res) => {
         `);
   } else {
     res.send(`
-            <h1>Hello, ${req.session.user.username || "User"}!
+            <h1>Hello, ${req.session?.username || "User"}!
             <form action="/membersOnly" method="GET">
                 <button type="submit">Go to Members Area</button>
             </form>
@@ -100,34 +99,46 @@ app.get("/signup", (req, res) => {
 });
 
 app.post("/createUser", async (req, res) => {
-  const username = req.body.username;
+  const name = req.body.username;
   const email = req.body.email;
   const password = req.body.password;
 
   const schema = Joi.object({
-    username: Joi.string().alphanum().max(20).required(),
-    password: Joi.string().max(20).required(),
+    name: Joi.string().alphanum().max(20).required(),
     email: Joi.string().email().required(),
+    password: Joi.string().max(20).required(),
   });
 
-  const valid = schema.validate({ username, password, email });
+  const valid = schema.validate({ name, password, email });
   // Use != to loosly check for null and undefined
   if (valid.error != null) {
-    res.redirect("/signup");
-    return;
+    console.log(valid.error);
+    const errorDetails = valid.error.details[0].message;
+
+    return res.send(`
+            <h3>Try again</h3>
+            <p>${errorDetails}</p>
+            <form action="/signup" method="GET">
+                <input type="submit" value="Go Back" />
+            </form>
+        `);
   }
 
   const hashedPass = await bcrypt.hash(password, saltRounds);
-  await userCollection.insertOne({ username, email, password: hashedPass });
+  await userCollection.insertOne({
+    username: name,
+    email,
+    password: hashedPass,
+  });
 
-  res.send("New user signup completed successfully");
+  res.redirect("/members");
 });
 
 app.get("/login", (req, res) => {
   res.send(`
             <h3>Login</h3>
             <form action="/login" method="POST">
-                <input name="email" type="text" placeholder="email">
+                <input name="email" type="text" placeholder="email" >
                 <input name="password" type="password" placeholder="password" id="password">
                 <button>Login</button>
             </form>
@@ -148,11 +159,19 @@ app.post("/login", async (req, res) => {
   const email = req.body.email;
   const password = req.body.password;
 
-  const schema = Joi.string().email().required();
-  const valid = schema.validate(email);
-  if (valid != null) {
-    console.log(valid.error);
-    return res.redirect("/login");
+  const schema = Joi.object({
+    email: Joi.string().email().required(),
+  });
+  const valid = schema.validate({ email });
+  console.log(valid);
+
+  if (valid.error != null) {
+    return res.send(`
+        <p>${valid.error.details[0].message}</p>
+        <form action="/login" method="GET">
+                <input type="submit" value="Back to Login" />
+            </form>
+        `);
   }
 
   const foundUser = await userCollection
@@ -160,22 +179,32 @@ app.post("/login", async (req, res) => {
     .project({ email: 1, username: 1, password: 1, _id: 1 })
     .toArray();
 
-  console.log({ foundUser });
-  if (foundUser.length >= 1) {
+  if (foundUser.length != 1) {
     console.log("user not found");
-    return res.redirect("/login");
+    return res.send(`
+        <p>Invalid email/password combination</p>
+        <form action="/login" method="GET">
+                <input type="submit" value="Back to Login" />
+            </form>
+        `);
   }
 
   if (await bcrypt.compare(password, foundUser[0].password)) {
     console.log("correct password");
     req.session.auth = true;
-    req.session.username = username;
+    req.session.username = foundUser[0].username;
     req.session.cookie.maxAge = expireTime;
 
     return res.redirect("/members");
   } else {
     console.log("incorrect password");
-    return res.redirect("/login");
+    console.log(valid);
+    return res.send(`
+        <p>Invalid email/password combination</p>
+        <form action="/login" method="GET">
+                <input type="submit" value="Back to Login" />
+            </form>
+        `);
   }
 });
 
@@ -192,12 +221,45 @@ app.get("/members", (req, res) => {
   } else {
     imgSrc = "/images/eq3.jpeg";
   }
-  res.send(`
+
+  return res.send(`
             <h3>Welcome to members area, ${
               req.session?.username || "User"
             }!</h3>
             <img src="${imgSrc}" alt="anImage" style="width:1050px"/>
+            <form action="/" method="GET">
+                <input type="submit" value="Home" />
+            </form>
+            <form action="/logout" method="POST">
+                <input type="submit" value="Logout" />
+            </fom>
         `);
+});
+
+app.post("/logout", (req, res) => {
+  req.session.destroy();
+  return res.send(`
+            <h3>You are logged out</h3>
+            <form action="/" method="GET">
+                <input type="submit" value="Home" />
+            </form>
+        `);
+});
+
+// app.get("*dummy", (req, res) => {
+//   res.status(404);
+//   res.send("Page not found - 404");
+// });
+
+// Note: app.use, not app.get
+app.use(function (req, res) {
+  res.status(404);
+  res.send(`
+        <h1>Page not found - 404</h1>
+        <form action="/" method="GET">
+            <input type="submit" value="Home" />
+        </form>
+    `);
 });
 
 app.listen(PORT, () => {
