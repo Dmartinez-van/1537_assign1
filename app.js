@@ -225,6 +225,10 @@ app.get("/members", (req, res) => {
     imgSrc = "/images/eq3.jpeg";
   }
 
+  if (!req.session.auth) {
+    return res.redirect("/");
+  }
+
   return res.send(`
             <h3>Welcome to members area, ${
               req.session?.username || "User"
