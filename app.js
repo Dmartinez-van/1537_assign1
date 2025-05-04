@@ -167,7 +167,6 @@ app.post("/login", async (req, res) => {
     email: Joi.string().email().required(),
   });
   const valid = schema.validate({ email });
-  console.log(valid);
 
   if (valid.error != null) {
     return res.send(`
@@ -215,15 +214,28 @@ app.get("/members", (req, res) => {
   // Math.random() generates random num from 0 to 1 (1 not inclusive)
   // Multiply result by 3 to get some value up to 3. Then add 1 to be inclusive of 3.
   const randomNum = Math.floor(Math.random() * 3) + 1;
-  console.log("random number is : ", randomNum);
   let imgSrc;
   if (randomNum === 1) {
-    imgSrc = "/images/eq1.jpeg";
+    imgSrc = "images/eq1.jpeg";
   } else if (randomNum === 2) {
-    imgSrc = "/images/eq2.png";
+    imgSrc = "images/eq2.png";
   } else {
-    imgSrc = "/images/eq3.jpeg";
+    imgSrc = "images/eq3.jpeg";
   }
+
+  // Sure it runs everytime a user hits this page...
+  // I just wanted to test it out.
+  // sharp("public/" + imgSrc)
+  //   .png()
+  //   .toFile("./public/images/output.png")
+  //   .then(() => console.log("Conversion complete!"))
+  //   .catch((err) => console.error(err));
+
+  // <img src="/images/output.png" alt="anImage" style="width:1050px"/>
+  // Using sharp results in:
+  // - A png file
+  // - a larger file size (0.7Mb jpeg vs 2.9Mb png)
+  // - Cropped png image (could be fixed with additional options)
 
   if (!req.session.auth) {
     return res.redirect("/");
